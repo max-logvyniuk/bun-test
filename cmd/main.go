@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -15,13 +14,10 @@ import (
 	// "github.com/rs/cors"
 
 	"github.com/joho/godotenv"
-	"github.com/uptrace/bunrouter"
-	"github.com/uptrace/bunrouter/extra/reqlog"
 
 	"github.com/max-logvyniuk/bun-test/cmd/migrations"
-	"github.com/max-logvyniuk/bun-test/lib/shared"
-	"github.com/max-logvyniuk/bun-test/lib/svc"
 	"github.com/max-logvyniuk/bun-test/lib/svc/app"
+	"github.com/max-logvyniuk/bun-test/lib/svc/transport"
 )
 
 func main() {
@@ -29,15 +25,6 @@ func main() {
 	ctx := context.Background()
 
 	app.Init(migrations.Migrations)
-
-	router := bunrouter.New(
-		bunrouter.Use(reqlog.NewMiddleware(
-			reqlog.FromEnv("BUNDEBUG"),
-		)),
-	)
-
-	router.GET("/data", getMessageHandler(ctx, app.ApplicationService))
-	router.POST("/data", createMessageHandler(ctx, app.ApplicationService))
 
 	host := os.Getenv("HOST")
 	port := os.Getenv("PORT")
@@ -48,7 +35,7 @@ func main() {
 		panic(err)
 	}
 
-	handler := http.Handler(router)
+	handler := transport.NewHTTPTransport(ctx, app.ApplicationService)
 
 	httpServer := &http.Server{
 		ReadTimeout:  5 * time.Second,
@@ -82,40 +69,4 @@ func waitExitSignal() os.Signal {
 		syscall.SIGTERM,
 	)
 	return <-ch
-}
-
-func getMessageHandler(ctx context.Context, appSvc svc.Service) bunrouter.HandlerFunc {
-	return func(w http.ResponseWriter, req bunrouter.Request) error {
-		data, err := appSvc.GetAllData(ctx)
-
-		if err != nil {
-			return err
-		}
-
-		return bunrouter.JSON(w, bunrouter.H{
-			"data": data,
-		})
-	}
-}
-
-func createMessageHandler(ctx context.Context, appSvc svc.Service) bunrouter.HandlerFunc {
-	return func(w http.ResponseWriter, req bunrouter.Request) error {
-		dto := shared.DataCreate{}
-
-		err := json.NewDecoder(req.Body).Decode(&dto)
-
-		if err != nil {
-			return err
-		}
-
-		data, err := appSvc.CreateData(ctx, dto)
-
-		if err != nil {
-			return err
-		}
-
-		return bunrouter.JSON(w, bunrouter.H{
-			"data": data,
-		})
-	}
 }
